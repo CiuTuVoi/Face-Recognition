@@ -1,192 +1,166 @@
 import cv2
 import numpy as np
 import onnxruntime
-import faiss
 import threading
 import queue
 import time
-import os
-import csv
+import faiss
 from ultralytics import YOLO
-from utils.face_utils import align_face, preprocess_face, preprocess_input, non_max_suppression
+from utils.log_manager import LogManager
+from utils.face_utils import (
+    align_face,
+    preprocess_input,
+    non_max_suppression,
+    check_frontal_face,
+    preprocess_face
+)
 
+# ==== CONFIG ====
 YOLO_FACE_MODEL = "models/yolov5n-0.5.onnx"
-YOLO_PERSON_MODEL = "models/yolov8n.pt"
+YOLO_PERSON_MODEL = "models/yolo11n.pt"
 EMBED_MODEL = "models/webface_r50.onnx"
-EMB_PATH = "embeddings/embeddings.npy"
-NAME_PATH = "embeddings/names.npy"
-LOG_DIR = "logs"
-SNAP_DIR = os.path.join(LOG_DIR, "snapshots")
-LOG_FILE = os.path.join(LOG_DIR, "log.csv")
-SIM_THRESHOLD = 0.6
-ACTIVE_REGION = (400, 530, 2000, 1350)  # (x_min, y_min, x_max, y_max)
-ACTIVE_REGION = (50, 50, 1200, 650)  # (x_min, y_min, x_max, y_max)
+# ACTIVE_REGION = (550, 600, 1700, 1400)
+ACTIVE_REGION = (50,50,1200,650)
 
-os.makedirs(SNAP_DIR, exist_ok=True)
+# ==== Load Embedding Database ====
+embed_session = onnxruntime.InferenceSession(EMBED_MODEL, providers=["CPUExecutionProvider"])
+embed_input_name = embed_session.get_inputs()[0].name
 
-face_detector = onnxruntime.InferenceSession(YOLO_FACE_MODEL, providers=["CUDAExecutionProvider"])
-embed_model = onnxruntime.InferenceSession(EMBED_MODEL, providers=["CUDAExecutionProvider"])
-embed_input = embed_model.get_inputs()[0].name
-embed_output = embed_model.get_outputs()[0].name
+database = np.load("embeddings/embeddings.npy").astype(np.float32)
+database /= np.linalg.norm(database, axis=1, keepdims=True)
+names = np.load("embeddings/names.npy")
 
-embs = np.load(EMB_PATH).astype('float32')
-names = list(np.load(NAME_PATH))
-faiss.normalize_L2(embs)
-id_map = {i: i for i in range(len(names))}
-next_id = max(id_map.values(), default=-1) + 1
+index = faiss.IndexFlatL2(database.shape[1])
+index.add(database)
 
-index = faiss.IndexIDMap(faiss.IndexFlatIP(embs.shape[1]))
-index.add_with_ids(embs, np.array(list(id_map.values()), dtype=np.int64))
-
+# ==== Load Models ====
+face_detector = onnxruntime.InferenceSession(YOLO_FACE_MODEL, providers=["CPUExecutionProvider"])
 yolo_person = YOLO(YOLO_PERSON_MODEL)
-person_faces = {}
-track_status = {}
+# yolo_person.to("cuda")
 
-frame_queue = queue.Queue(maxsize=5)
-result_queue = queue.Queue(maxsize=5)
+# ==== Queues ====
+frame_queue = queue.Queue(maxsize=1)
+result_queue = queue.Queue(maxsize=1)
+
+# ==== Log Manager ====
+log_manager = LogManager()
+
 
 def in_active_region(x1, y1, x2, y2):
     cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
     xmin, ymin, xmax, ymax = ACTIVE_REGION
     return xmin <= cx <= xmax and ymin <= cy <= ymax
 
-def log_event_summary(track_id, name, sim, t_start, t_end, best_img_path):
-    row = [t_start, t_end, track_id, name, f"{sim:.2f}" if sim else "", best_img_path]
-    with open(LOG_FILE, "a", newline='') as f:
-        csv.writer(f).writerow(row)
-
-def register_new(emb):
-    global embs, names, index, id_map, next_id
-    new_id = next_id
-    next_id += 1
-    new_name = f"unknown_{new_id:03d}"
-    names.append(new_name)
-    emb = emb.reshape(1, -1).astype('float32')
-    faiss.normalize_L2(emb)
-    index.add_with_ids(emb, np.array([new_id], dtype=np.int64))
-    id_map[len(names)-1] = new_id
-    embs = np.vstack([embs, emb])
-    np.save(EMB_PATH, embs)
-    np.save(NAME_PATH, np.array(names))
-    return new_name, new_id
-
-def recognize_face(frame, box, lm):
-    aligned = align_face(frame, lm)
-    inp_face = preprocess_face(aligned)
-    emb = embed_model.run([embed_output], {embed_input: inp_face})[0][0]
-    emb = emb / np.linalg.norm(emb)
-    query = emb.reshape(1, -1).astype('float32')
-    faiss.normalize_L2(query)
-    D, I = index.search(query, k=1)
-    sim = float(D[0][0])
-    matched_id = int(I[0][0])
-    name = names[list(id_map.values()).index(matched_id)] if sim > SIM_THRESHOLD else None
-    if name is None:
-        name, matched_id = register_new(emb)
-    return name, sim, emb
-
 def capture_thread(cap):
     while True:
         ret, frame = cap.read()
         if not ret:
             break
+        if not ret or frame is None:
+            continue  # hoặc break tùy logic
         if not frame_queue.full():
             frame_queue.put(frame)
-        time.sleep(0.01)
+        time.sleep(0.05)
+
+
+
+def process_person(box, frame, draw_frame):
+    if box.id is None:
+        return
+
+    track_id = int(box.id.item())
+    x1, y1, x2, y2 = box.xyxy[0].cpu().numpy().astype(int)
+    if not in_active_region(x1, y1, x2, y2):
+        return
+
+    roi = frame[y1:y2, x1:x2].copy()
+
+    inp, scale, pad = preprocess_input(roi)
+    outs = face_detector.run(None, {face_detector.get_inputs()[0].name: inp})
+    dets = non_max_suppression(outs[0], outs[1], outs[2])
+
+    log_manager.log_appear(track_id)
+    log_manager.update_last_seen(track_id, person_image=roi)
+
+    for box_face, lm in dets:
+        left, top = pad
+        scale_inv = 1.0 / scale
+
+        fx1 = int((box_face[0] - left) * scale_inv + x1)
+        fy1 = int((box_face[1] - top) * scale_inv + y1)
+        fx2 = int((box_face[2] - left) * scale_inv + x1)
+        fy2 = int((box_face[3] - top) * scale_inv + y1)
+
+        landmarks = [(int((lm[i] - left) * scale_inv + x1),
+                      int((lm[i + 1] - top) * scale_inv + y1)) for i in range(0, 10, 2)]
+
+        aligned_face = align_face(frame, landmarks)
+        pose_label, _ = check_frontal_face(lm)
+
+        color = (0, 255, 0) if "Yaw" not in pose_label else (0, 0, 255)
+        cv2.rectangle(draw_frame, (x1, y1), (x2, y2), (255, 255, 0), 2)
+        cv2.rectangle(draw_frame, (fx1, fy1), (fx2, fy2), color, 2)
+        for (lx, ly) in landmarks:
+            cv2.circle(draw_frame, (lx, ly), 2, (255, 0, 0), -1)
+        cv2.putText(draw_frame, pose_label, (fx1, fy1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+
+        if "Yaw" not in pose_label:
+            face_input = preprocess_face(aligned_face)
+            face_embed = embed_session.run(None, {embed_input_name: face_input})[0]
+            face_embed = face_embed.astype(np.float32)
+            face_embed /= np.linalg.norm(face_embed, axis=1, keepdims=True)
+
+            D, I = index.search(face_embed, k=1)
+            distance = D[0][0]
+            idx = I[0][0]
+            confidence = max(0.0, 1.0 - distance / 2.0)
+            name = names[idx] if confidence > 0.3 else "Unknown"
+            text = f"{name} ({confidence * 100:.1f}%)"
+            cv2.putText(draw_frame, text, (fx1, fy2 + 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+
+            log_manager.log_identified(track_id, name, confidence, pose_label, aligned_face, roi)
 
 def process_thread():
-    frame_count = 0
-    track_buffer = {}
     while True:
         if frame_queue.empty():
             time.sleep(0.01)
             continue
+
         frame = frame_queue.get()
-        frame_count += 1
         draw_frame = frame.copy()
 
         results = yolo_person.track(source=frame, persist=True, classes=[0], verbose=False)
         boxes = results[0].boxes
-        current_ids = set()
 
-        for i, box in enumerate(boxes):
-            xyxy = box.xyxy[0].cpu().numpy().astype(int)
-            x1, y1, x2, y2 = xyxy
-            if not in_active_region(x1, y1, x2, y2):
-                continue
+        threads = []
+        for box in boxes:
+            t = threading.Thread(target=process_person, args=(box, frame, draw_frame))
+            threads.append(t)
+            t.start()
 
-            track_id = int(box.id[0]) if box.id is not None else i
-            current_ids.add(track_id)
-            roi = frame[y1:y2, x1:x2].copy()
-
-            if track_id not in track_buffer:
-                track_buffer[track_id] = {
-                    "start_time": time.strftime("%Y-%m-%d %H:%M:%S"),
-                    "end_time": None,
-                    "name": "Unknown",
-                    "sim": 0,
-                    "best_score": 0,
-                    "best_img": None
-                }
-
-            if frame_count % 5 == 0:
-                inp, scale, pad = preprocess_input(roi)
-                outs = face_detector.run(None, {face_detector.get_inputs()[0].name: inp})
-                dets = non_max_suppression(outs[0], outs[1], outs[2])
-                if len(dets) > 0:
-                    box_face, lm = dets[0]
-                    left, top = pad
-                    landmarks = [(int((lm[i] - left) / scale), int((lm[i + 1] - top) / scale)) for i in range(0, 10, 2)]
-                    name, sim, emb = recognize_face(roi, box_face, landmarks)
-                    if name != "Unknown" and sim > track_buffer[track_id]["sim"]:
-                        track_buffer[track_id]["name"] = name
-                        track_buffer[track_id]["sim"] = sim
-                        track_buffer[track_id]["best_img"] = roi.copy()
-                    elif name == "Unknown" and dets[0][1][-1] > track_buffer[track_id]["best_score"]:
-                        track_buffer[track_id]["best_score"] = dets[0][1][-1]
-                        track_buffer[track_id]["best_img"] = roi.copy()
-
-            cv2.rectangle(draw_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-            cv2.putText(draw_frame, f"{track_buffer[track_id]['name']}_{track_id}", (x1, y1 - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-
-        to_remove = []
-        for tid in list(track_buffer.keys()):
-            if tid not in current_ids:
-                if tid not in track_status:
-                    track_status[tid] = frame_count
-                elif frame_count - track_status[tid] > 30:
-                    t = track_buffer[tid]
-                    t["end_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
-                    img_path = ""
-                    if t["best_img"] is not None:
-                        img_path = os.path.join(SNAP_DIR, f"person_{tid}_{int(time.time())}.jpg")
-                        cv2.imwrite(img_path, t["best_img"])
-                    log_event_summary(tid, t["name"], t["sim"], t["start_time"], t["end_time"], img_path)
-                    to_remove.append(tid)
-        for tid in to_remove:
-            del track_buffer[tid]
-            if tid in track_status:
-                del track_status[tid]
+        for t in threads:
+            t.join()
 
         xmin, ymin, xmax, ymax = ACTIVE_REGION
         cv2.rectangle(draw_frame, (xmin, ymin), (xmax, ymax), (255, 0, 0), 2)
         cv2.putText(draw_frame, "Active Region", (xmin, ymin - 10),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
 
+        log_manager.cleanup_tracks(timeout=3)
+
         if not result_queue.full():
             result_queue.put(draw_frame)
 
 # ==== START ====
-url = "rtsp://admin:Hicas@2024!@10.0.10.120:554"
-cap = cv2.VideoCapture(0)
+url1 = "rtsp://admin:Hicas%402024%21@10.0.10.120:554"
+url2 = "rtsp://10.0.10.53:8554/live/7c158392-772c-4497-8b62-000e9861ad6b"
+url3 = "rtsp://10.0.10.55:8554/live/c64f766f-b2d6-4bf6-a199-1c48ae55e341"
+cap = cv2.VideoCapture(0) #url3, cv2.CAP_FFMPEG)
 cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1440)
 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 810)
 
-t1 = threading.Thread(target=capture_thread, args=(cap,), daemon=True)
-t2 = threading.Thread(target=process_thread, daemon=True)
-t1.start()
-t2.start()
+threading.Thread(target=capture_thread, args=(cap,), daemon=True).start()
+threading.Thread(target=process_thread, daemon=True).start()
 
 cv2.namedWindow("Tracking", cv2.WINDOW_NORMAL)
 cv2.resizeWindow("Tracking", 1440, 810)

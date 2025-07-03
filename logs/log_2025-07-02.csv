@@ -1,0 +1,58 @@
+2025-07-02 14:29:51,37,appear,Unknown,,,,
+2025-07-02 14:29:58,37,disappear,Unknown,0,,,logs/persons/track_37_20250702_142958.jpg
+2025-07-02 14:31:22,105,appear,Unknown,,,,
+2025-07-02 14:31:26,118,appear,Unknown,,,,
+2025-07-02 14:31:26,105,disappear,Unknown,0,,,logs/persons/track_105_20250702_143126.jpg
+2025-07-02 14:31:29,121,appear,Unknown,,,,
+2025-07-02 14:31:30,124,appear,Unknown,,,,
+2025-07-02 14:31:31,118,disappear,Unknown,0,,,logs/persons/track_118_20250702_143131.jpg
+2025-07-02 14:31:37,124,disappear,Unknown,0,,,logs/persons/track_124_20250702_143137.jpg
+2025-07-02 14:31:41,121,disappear,Unknown,0,,,logs/persons/track_121_20250702_143141.jpg
+2025-07-02 14:36:30,213,appear,Unknown,,,,
+2025-07-02 14:36:31,201,appear,Unknown,,,,
+2025-07-02 14:36:32,201,identified,Unknown,0.44,Pitch Down,logs/faces/track_201_20250702_143632.jpg,logs/persons/track_201_20250702_143632.jpg
+2025-07-02 14:36:34,242,appear,Unknown,,,,
+2025-07-02 14:36:34,213,identified,Unknown,0.32,Pitch Down,logs/faces/track_213_20250702_143634.jpg,logs/persons/track_213_20250702_143634.jpg
+2025-07-02 14:36:35,247,appear,Unknown,,,,
+2025-07-02 14:36:36,248,appear,Unknown,,,,
+2025-07-02 14:36:37,201,disappear,Unknown,0.44134086,,,
+2025-07-02 14:36:38,242,disappear,Unknown,0,,,logs/persons/track_242_20250702_143638.jpg
+2025-07-02 14:36:38,252,appear,Unknown,,,,
+2025-07-02 14:36:39,247,disappear,Unknown,0,,,logs/persons/track_247_20250702_143639.jpg
+2025-07-02 14:36:39,248,disappear,Unknown,0,,,logs/persons/track_248_20250702_143639.jpg
+2025-07-02 14:36:40,213,disappear,Unknown,0.32397145,,,
+2025-07-02 14:36:41,262,appear,Unknown,,,,
+2025-07-02 14:36:41,264,appear,Unknown,,,,
+2025-07-02 14:36:41,252,disappear,Unknown,0,,,logs/persons/track_252_20250702_143641.jpg
+2025-07-02 14:36:44,262,disappear,Unknown,0,,,logs/persons/track_262_20250702_143644.jpg
+2025-07-02 14:36:46,264,disappear,Unknown,0,,,logs/persons/track_264_20250702_143646.jpg
+2025-07-02 14:38:27,269,appear,Unknown,,,,
+2025-07-02 14:38:34,269,disappear,Unknown,0,,,logs/persons/track_269_20250702_143834.jpg
+2025-07-02 14:41:08,305,appear,Unknown,,,,
+2025-07-02 14:41:11,305,identified,Unknown,0.31, + Pitch Down,logs/faces/track_305_20250702_144111.jpg,logs/persons/track_305_20250702_144111.jpg
+2025-07-02 14:41:12,318,appear,Unknown,,,,
+2025-07-02 14:41:15,318,disappear,Unknown,0,,,logs/persons/track_318_20250702_144115.jpg
+2025-07-02 14:41:15,305,disappear,Unknown,0.3064642,,,
+2025-07-02 14:48:43,7,appear,Unknown,,,,
+2025-07-02 14:48:43,8,appear,Unknown,,,,
+2025-07-02 14:48:46,7,disappear,Unknown,0,,,logs/persons/track_7_20250702_144846.jpg
+2025-07-02 14:48:58,8,disappear,Unknown,0,,,logs/persons/track_8_20250702_144858.jpg
+2025-07-02 14:52:30,48,appear,Unknown,,,,
+2025-07-02 14:52:31,48,identified,Dinh,0.49,Pitch Down,logs/faces/track_48_20250702_145231.jpg,logs/persons/track_48_20250702_145231.jpg
+2025-07-02 14:52:43,48,disappear,Dinh,0.48890865,,,
+2025-07-02 15:44:05,2,appear,Unknown,,,,
+2025-07-02 15:44:10,2,identified,Tu,0.34,Pitch Down,logs/faces/track_2_20250702_154410.jpg,logs/persons/track_2_20250702_154410.jpg
+2025-07-02 15:44:23,2,disappear,Tu,0.3379339,,,
+2025-07-02 15:44:44,2,appear,Unknown,,,,
+2025-07-02 15:44:45,2,identified,Tu,0.34,Pitch Down,logs/faces/track_2_20250702_154445.jpg,logs/persons/track_2_20250702_154445.jpg
+2025-07-02 15:44:51,2,disappear,Tu,0.3446306,,,
+2025-07-02 15:45:35,58,appear,Unknown,,,,
+2025-07-02 15:45:38,58,disappear,Unknown,0,,,logs/persons/track_58_20250702_154538.jpg
+2025-07-02 17:12:21,6,appear,Unknown,,,,
+2025-07-02 17:12:22,6,identified,Tu1,0.42,Pitch Down,logs/faces/track_6_20250702_171222.jpg,logs/persons/track_6_20250702_171222.jpg
+2025-07-02 17:12:34,6,disappear,Tu1,0.42355978,,,
+2025-07-02 17:12:35,9,appear,Unknown,,,,
+2025-07-02 17:12:38,9,identified,Tu1,0.49, + Pitch Down + Roll Left,logs/faces/track_9_20250702_171238.jpg,logs/persons/track_9_20250702_171238.jpg
+2025-07-02 17:12:44,9,disappear,Tu1,0.4856953,,,
+2025-07-02 17:12:45,16,appear,Unknown,,,,
+2025-07-02 17:12:50,16,disappear,Unknown,0,,,logs/persons/track_16_20250702_171250.jpg
